@@ -6,6 +6,9 @@ eBPF disassembler written in Lua
 
 ```bash
 $ objdump -s -j prog data/xdp_ipv6_filter.o | ./ebpf_disasm.lua
+```
+
+```asm
 ldxw r2, [r1+0x4]
 ldxw r1, [r1+0x0]
 mov64 r3, r1
