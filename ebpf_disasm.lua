@@ -1,3 +1,5 @@
+#!/usr/bin/env luajit
+
 local ffi = require("ffi")
 
 -- Util.
@@ -445,34 +447,61 @@ local function dump_ebpf_prog (prog)
    end
 end
 
-function test_dump (text)
+local function test_dump ()
+   local eBPF_hexdump = [[
+      61120400 00000000 61110000 00000000
+      bf130000 00000000 07030000 0e000000
+      3d320f00 00000000 18010000 72736520
+      00000000 4c320a00 7b1af0ff 00000000
+      18010000 616e6e6f 00000000 74207061
+      7b1ae8ff 00000000 18010000 44656275
+      00000000 673a2043 7b1ae0ff 00000000
+      bfa10000 00000000 07010000 e0ffffff
+      b7020000 18000000 85000000 06000000
+      b7000000 02000000 05001700 00000000
+      71120c00 00000000 71160d00 00000000
+      b7010000 0a000000 6b1af4ff 00000000
+      b7010000 30782578 631af0ff 00000000
+      18010000 74685f74 00000000 7970653a
+      7b1ae8ff 00000000 18010000 44656275
+      00000000 673a2065 7b1ae0ff 00000000
+      67060000 08000000 4f260000 00000000
+      bf630000 00000000 dc030000 10000000
+      bfa10000 00000000 07010000 e0ffffff
+      b7020000 16000000 85000000 06000000
+      b7000000 02000000 15060100 86dd0000
+      b7000000 01000000 95000000 00000000
+   ]]
    local prog = hexdump_to_prog(text)
    dump_ebpf_prog(prog)
 end
 
-local eBPF_program = [[
-  61120400 00000000 61110000 00000000
-  bf130000 00000000 07030000 0e000000
-  3d320f00 00000000 18010000 72736520
-  00000000 4c320a00 7b1af0ff 00000000
-  18010000 616e6e6f 00000000 74207061
-  7b1ae8ff 00000000 18010000 44656275
-  00000000 673a2043 7b1ae0ff 00000000
-  bfa10000 00000000 07010000 e0ffffff
-  b7020000 18000000 85000000 06000000
-  b7000000 02000000 05001700 00000000
-  71120c00 00000000 71160d00 00000000
-  b7010000 0a000000 6b1af4ff 00000000
-  b7010000 30782578 631af0ff 00000000
-  18010000 74685f74 00000000 7970653a
-  7b1ae8ff 00000000 18010000 44656275
-  00000000 673a2065 7b1ae0ff 00000000
-  67060000 08000000 4f260000 00000000
-  bf630000 00000000 dc030000 10000000
-  bfa10000 00000000 07010000 e0ffffff
-  b7020000 16000000 85000000 06000000
-  b7000000 02000000 15060100 86dd0000
-  b7000000 01000000 95000000 00000000
-]]
+function selftest ()
+   test_dump()
+end
 
-test_dump(eBPF_program)
+-- Main.
+
+local hexdump = {}
+
+local function parse_line (l)
+   local ret = {}
+   for col in l:gmatch("[^%s]+") do
+      table.insert(ret, col)
+   end
+   return unpack(ret)
+end
+
+for line in io.lines(stdin) do
+   local lineno, col1, col2, col3, col4, text = parse_line(line)
+   if not text then goto continue end
+   local newline = ("%s %s %s %s"):format(col1, col2, col3, col4)
+   table.insert(hexdump, newline)
+   ::continue::
+end
+
+if #hexdump > 0 then
+   local text = table.concat(hexdump, "\n")
+   local prog = hexdump_to_prog(text)
+   dump_ebpf_prog(prog)
+end
