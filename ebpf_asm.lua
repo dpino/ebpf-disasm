@@ -416,14 +416,42 @@ local function test_parse_lines ()
    test_parse_line("exit",                        {'exit'})
 end
 
+local cast_uint64 = (function()
+   local t = ffi.new([[
+      union {
+         uint32_t hi;
+         uint32_t lo;
+         uint64_t val;
+      }
+   ]])
+   return function (val)
+      t.val = val
+      return t
+   end
+end)()
+
 local function compile_program (text)
    local ret = {}
    for l in text:gmatch("[^\n]+") do
-      local t = assert(parse_line(l), "Error parsing line")
+      local t = assert(parse_line(l))
       if #t > 0 then
-         local ir = assert(emit_ir(t), "Error emiting IR")
-         local instr = assert(emit_instr(ir), "Error compiling instruction")
-         table.insert(ret, instr)
+           local ir = assert(emit_ir(t))
+         -- Wide instruction.
+         if ir.opcode == 0x18 then
+            local u64 = cast_uint64(ir.imm)
+            local hi, lo = u64.hi, u64.lo
+
+            ir.imm = hi
+            local instr = assert(emit_instr(ir))
+            table.insert(ret, instr)
+
+            local ir = {opcode=0, imm=lo}
+            local instr = assert(emit_instr(ir))
+            table.insert(ret, instr)
+         else
+            local instr = assert(emit_instr(ir))
+            table.insert(ret, instr)
+         end
       end
    end
    return ret
