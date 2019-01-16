@@ -387,3 +387,5 @@ function selftest ()
    test_parse_lines()
    test_asm()
 end
+
+selftest()
