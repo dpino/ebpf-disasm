@@ -142,7 +142,7 @@ local opcodes = {
    ["exit"]     = {0x95},
 }
 
-local maybe_imm = set{"jgt", "jge", "jlt", "jle", "jset", "jne", "jsgt",
+local maybe_imm = set{"jeq", "jgt", "jge", "jlt", "jle", "jset", "jne", "jsgt",
                       "jsge", "jslt", "jsle", "add64", "sub64", "mul64",
                       "div64", "or64", "and64", "lsh64", "rsh64", "mod64",
                       "xor64", "mov64", "arsh64", "add32", "sub32", "mul32",
@@ -179,15 +179,48 @@ local function emit_instr (t)
    return instr
 end
 
-local function hexdump (instr)
-   local t = {}
-   for i=0,7 do
-      table.insert(t, ("%.2x"):format(instr.data[i]))
-      if i == 3 then
-         table.insert(t, " ")
+local function pp (t, opts)
+   local cols = opts.cols or 1
+   local ret = {}
+   local i, l = 0, {}
+   local lineno = 0
+   for _, each in ipairs(t) do
+      table.insert(l, each)
+      i = i + 1
+      if i == cols then
+         local line = table.concat(l, " ")
+         if opts.lineno then
+            line = ("%.4x"):format(lineno).." "..line
+            lineno = lineno + (cols*8)
+         end
+         table.insert(ret, line)
+         i, l = 0, {}
       end
    end
-   return table.concat(t, "")
+   return table.concat(ret, "\n")
+end
+
+local function hexdump (instr)
+   local function fn (instr)
+      local ret = {}
+      for i=0,7 do
+         table.insert(ret, ("%.2x"):format(instr.data[i]))
+         if i == 3 then
+            table.insert(ret, " ")
+         end
+      end
+      return table.concat(ret, "")
+   end
+   if type(instr) == 'table' then
+      local ret = {}
+      for i=1,#instr do
+         table.insert(ret, fn(instr[i]))
+      end
+      -- return table.concat(ret, "\n")
+      return pp(ret, {cols=2, lineno=true})
+   else
+      return fn(instr)
+   end
 end
 
 -- Registers.
@@ -276,7 +309,7 @@ local function parse_number (val)
 end
 
 local function parse_reg_off (str)
-   local reg, off = str:match('[([%w]+)%+([.]+)]')
+   local reg, off = str:match('%[([%w]+)+([%w]+)%]')
    if not reg then
       error("Error parsing string: "..str)
    end
@@ -289,7 +322,7 @@ end
 -- @return intermediate representation table, i.e:
 --    {opcode=0xb7, dst=0, imm=1}
 --
-local function to_ir (t)
+local function emit_ir (t)
    assert(type(t) == 'table')
    local function fetch_instr (k)
       local t = opcodes[k]
@@ -331,7 +364,7 @@ end
 local function test_asm ()
    local l = parse_line("mov64 r0, 0x1")
    assert(table_equals(l, {'mov64', 'r0', '0x1'}))
-   local ir = to_ir(l)
+   local ir = emit_ir(l)
    assert(table_equals(ir, {opcode=0xb7, dst=0, imm=0x1}))
    local instr = emit_instr(ir)
    assert(hexdump(instr) == "b7000000 01000000")
@@ -383,9 +416,73 @@ local function test_parse_lines ()
    test_parse_line("exit",                        {'exit'})
 end
 
+local function compile_program (text)
+   local ret = {}
+   for l in text:gmatch("[^\n]+") do
+      local t = assert(parse_line(l), "Error parsing line")
+      if #t > 0 then
+         local ir = assert(emit_ir(t), "Error emiting IR")
+         local instr = assert(emit_instr(ir), "Error compiling instruction")
+         table.insert(ret, instr)
+      end
+   end
+   return ret
+end
+
+local function test_compile_program ()
+   local prog = [[
+      ldxw r2, [r1+0x4]
+      ldxw r1, [r1+0x0]
+      mov64 r3, r1
+      add64 r3, 0xe
+      jge r2, r3, +0xf
+      lddw r1, 0x0a324c20657372
+      stxdw [r10+0xfff0], r1
+      lddw r1, 0x617020746f6e6e61
+      stxdw [r10+0xffe8], r1
+      lddw r1, 0x43203a6775626544
+      stxdw [r10+0xffe0], r1
+      mov64 r1, r10
+      add64 r1, 0xffffffe0
+      mov64 r2, 0x18
+      call 0x6
+      mov64 r0, 0x2
+      ja +0x17
+      ldxb r2, [r1+0xc]
+      ldxb r6, [r1+0xd]
+      mov64 r1, 0xa
+      stxh [r10+0xfff4], r1
+      mov64 r1, 0x78257830
+      stxw [r10+0xfff0], r1
+      lddw r1, 0x3a657079745f6874
+      stxdw [r10+0xffe8], r1
+      lddw r1, 0x65203a6775626544
+      stxdw [r10+0xffe0], r1
+      lsh64 r6, 0x8
+      or64 r6, r2
+      mov64 r3, r6
+      be16 r3
+      mov64 r1, r10
+      add64 r1, 0xffffffe0
+      mov64 r2, 0x16
+      call 0x6
+      mov64 r0, 0x2
+      jeq r6, 0xdd86, +0x1
+      mov64 r0, 0x1
+      exit
+   ]]
+   local linstr = compile_program(prog)
+   print("Source:")
+   print(prog)
+   print("")
+   print("Result:")
+   print(hexdump(linstr))
+end
+
 function selftest ()
    test_parse_lines()
    test_asm()
+   test_compile_program()
 end
 
 selftest()
