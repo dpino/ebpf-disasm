@@ -84,12 +84,12 @@ local opcodes = {
    ["arsh32"]     = {0xcc, {'dst', 'src'}},
 
    -- Byteswap opcodes.
-   ["le16"] = {0xd4, {'dst'}},
-   ["le32"] = {0xd4, {'dst'}},
-   ["le64"] = {0xd4, {'dst'}},
-   ["be16"] = {0xdc, {'dst'}},
-   ["be32"] = {0xdc, {'dst'}},
-   ["be64"] = {0xdc, {'dst'}},
+   ["le16"] = {0xd4, {'dst','imm'}},
+   ["le32"] = {0xd4, {'dst','imm'}},
+   ["le64"] = {0xd4, {'dst','imm'}},
+   ["be16"] = {0xdc, {'dst','imm'}},
+   ["be32"] = {0xdc, {'dst','imm'}},
+   ["be64"] = {0xdc, {'dst','imm'}},
 
    -- Memory opcodes.
    ["lddw"]    = {0x18, {'dst', 'imm'}},
@@ -216,7 +216,6 @@ local function hexdump (instr)
       for i=1,#instr do
          table.insert(ret, fn(instr[i]))
       end
-      -- return table.concat(ret, "\n")
       return pp(ret, {cols=2, lineno=true})
    else
       return fn(instr)
@@ -277,6 +276,15 @@ local prog = [[
    exit
 ]]
 
+local byteswap_imm = {
+   be16 = '16',
+   be32 = '32',
+   be64 = '64',
+   le16 = '16',
+   le32 = '32',
+   le64 = '64',
+}
+
 -- TODO: Create a Parser object that can read a file and parse it.
 -- It can emit parsed lines or perhaps transform the parsed lines to
 -- the final bytecode, all in one pass.
@@ -293,6 +301,9 @@ local function parse_line (l)
       table.insert(ret, arg)
    end
    assert(#ret <= 4, "Too many arguments: "..l)
+   -- Adjust byteswap imm value depending on opcode.
+   local imm = byteswap_imm[ret[1]]
+   if imm then ret[3] = imm end
    return ret
 end
 
@@ -349,6 +360,7 @@ local function emit_ir (t)
       elseif name == 'imm' then
          ret[name] = parse_number(t[i])
       elseif name == '+off' then
+         name = name:sub(2)
          ret[name] = parse_number(t[i])
       elseif name == '[src+off]' then
          ret['src'], ret['off'] = parse_reg_off(t[i])
@@ -405,7 +417,7 @@ local function test_parse_lines ()
    test_parse_line("lsh64 r6, 0x8",               {'lsh64', 'r6', '0x8'})
    test_parse_line("or64 r6, r2",                 {'or64',  'r6', 'r2'})
    test_parse_line("mov64 r3, r6",                {'mov64', 'r3', 'r6'})
-   test_parse_line("be16 r3",                     {'be16',  'r3'})
+   test_parse_line("be16 r3",                     {'be16',  'r3', '16'})
    test_parse_line("mov64 r1, r10",               {'mov64', 'r1', 'r10'})
    test_parse_line("add64 r1, 0xffffffe0",        {'add64', 'r1', '0xffffffe0'})
    test_parse_line("mov64 r2, 0x16",              {'mov64', 'r2', '0x16'})
@@ -437,7 +449,7 @@ local function compile_program (text)
    for l in text:gmatch("[^\n]+") do
       local t = assert(parse_line(l))
       if #t > 0 then
-           local ir = assert(emit_ir(t))
+         local ir = assert(emit_ir(t))
          -- Wide instruction.
          if ir.opcode == 0x18 then
             local hi, lo = hilo(ir.imm)
@@ -529,10 +541,13 @@ local function test_compile_program ()
    local linstr = compile_program(prog)
    local actual = hexdump(linstr)
    print(actual)
-   print("")
-   print(expected)
+end
 
-   -- assert(expected == actual)
+local function instr_to_hexdump (text)
+   local t = parse_line(l)
+   local ir = emit_ir(t)
+   local instr = emit_instr(ir)
+   print(hexdump(instr))
 end
 
 function selftest ()
