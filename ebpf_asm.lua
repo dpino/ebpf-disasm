@@ -416,17 +416,19 @@ local function test_parse_lines ()
    test_parse_line("exit",                        {'exit'})
 end
 
-local cast_uint64 = (function()
-   local t = ffi.new([[
+local hilo = (function()
+   local t = ffi.new[[
       union {
-         uint32_t hi;
-         uint32_t lo;
+         struct {
+            uint32_t hi;
+            uint32_t lo;
+         };
          uint64_t val;
       }
-   ]])
+   ]]
    return function (val)
       t.val = val
-      return t
+      return t.hi, t.lo
    end
 end)()
 
@@ -438,8 +440,7 @@ local function compile_program (text)
            local ir = assert(emit_ir(t))
          -- Wide instruction.
          if ir.opcode == 0x18 then
-            local u64 = cast_uint64(ir.imm)
-            local hi, lo = u64.hi, u64.lo
+            local hi, lo = hilo(ir.imm)
 
             ir.imm = hi
             local instr = assert(emit_instr(ir))
