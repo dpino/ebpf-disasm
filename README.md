@@ -7,7 +7,7 @@ eBPF disassembler and assembler written in Lua
 Reads an hexadecimal dump of eBPF code and transforms it to readable eBPF source code. Example:
 
 ```bash
-$ objdump -s -j prog data/xdp_ipv6_filter.o | ./ebpf_disasm.lua
+$ objdump -s -j prog data/xdp_ipv6_filter.o | ./bin/ebpf-disasm
 ```
 
 ```asm
@@ -56,7 +56,7 @@ exit
 Read an input eBPF source code program and transforms it to binary code. Example:
 
 ```bash
-$ bin/ebpf-asm data/prog.ebpf
+$ bin/ebpf-asm data/xdp_ipv6_filter.ebpf
 output.bin
 ```
 
