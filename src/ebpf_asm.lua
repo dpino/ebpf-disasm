@@ -1,3 +1,5 @@
+#!/usr/bin/env luajit
+
 local ffi = require("ffi")
 
 -- Util.
