@@ -17,7 +17,7 @@ local function dump (t)
       if tonumber(v) then
          v = ("%x"):format(v)
       end
-      print(k, v)
+      print(k, "."..v..".")
    end
 end
 
@@ -295,7 +295,7 @@ local function parse_line (l)
    opcode, pos = l:match("([^%s]+)()", pos)
    table.insert(ret, opcode)
    while true do
-      arg, pos = l:match("([^, \n]+)()", pos)
+      arg, pos = l:match("([^,\n%s]+)()", pos)
       if not arg then break end
       table.insert(ret, arg)
    end
@@ -575,4 +575,32 @@ function selftest ()
    test_compile_program()
 end
 
-selftest()
+function run (args)
+   local filein = args[1]
+   if not filein then
+      print("Usage: ebpf-asm <filein> [<fileout>]")
+      os.exit(1)
+   end
+
+   local fin = io.open(filein, "rt")
+   if not fin then
+      print("Could not open file: "..filein)
+      os.exit(1)
+   end
+   local content = fin:read("*all")
+   fin:close()
+   local prog = compile_program(content)
+
+   local fileout = args[2] or "output.bin"
+   local fout = io.open(fileout, "wb")
+   for _, instr in ipairs(prog) do
+      for i=0,7 do
+         fout:write(string.char(instr.data[i]))
+      end
+   end
+   fout:close()
+   print(fileout)
+end
+
+-- selftest()
+run(arg)
