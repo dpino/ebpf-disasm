@@ -12,6 +12,9 @@ end
 
 local function dump (t)
    for k,v in pairs(t) do
+      if tonumber(v) then
+         v = ("%x"):format(v)
+      end
       print(k, v)
    end
 end
@@ -24,6 +27,10 @@ local function table_equals (t1, t2)
       end
    end
    return true
+end
+
+local function hex (val)
+   return ("%x"):format(val)
 end
 
 -- Opcodes.
@@ -168,16 +175,6 @@ local instr_t = ffi.typeof [[
       uint8_t data[8];
    }
 ]]
-
-local function emit_instr (t)
-   local instr = ffi.new(instr_t)
-   instr.opcode = t.opcode
-   instr.dst = t.dst or 0
-   instr.src = t.src or 0
-   instr.off =   t.off or 0
-   instr.imm = t.imm or 0
-   return instr
-end
 
 local function pp (t, opts)
    local cols = opts.cols or 1
@@ -327,6 +324,21 @@ local function parse_reg_off (str)
    return parse_reg(reg), parse_number(off)
 end
 
+local function is_wide (opcode)
+   return opcode == 0x18
+end
+
+local function hilo (val)
+   assert(type(val) == 'string')
+   if val:sub(1,2) == "0x" then
+      val = val:sub(3)
+   end
+   local len = #val
+   local lo = tonumber(val:sub(1,len-8), 16)
+   local hi = tonumber(val:sub(len-7, len), 16)
+   return hi, lo
+end
+
 -- Transforms 't' to intermediate representation.
 -- @param: 't', a table containing a parsed line, i.e:
 --    {'mov64', 'r0', '0x1'}
@@ -358,7 +370,12 @@ local function emit_ir (t)
       if name == 'dst' or name == 'src' then
          ret[name] = parse_reg(t[i])
       elseif name == 'imm' then
-         ret[name] = parse_number(t[i])
+         local imm = t[i]
+         if is_wide(opcode) then
+            ret['hi'], ret['lo'] = hilo(imm)
+         else
+            ret[name] = parse_number(imm)
+         end
       elseif name == '+off' then
          name = name:sub(2)
          ret[name] = parse_number(t[i])
@@ -373,13 +390,36 @@ local function emit_ir (t)
    return ret
 end
 
+local function emit_instr (t)
+   local function new_instr (t)
+      local ret = ffi.new(instr_t)
+      ret.opcode = t.opcode or 0
+      ret.dst = t.dst or 0
+      ret.src = t.src or 0
+      ret.off = t.off or 0
+      ret.imm = t.imm or 0
+      return ret
+   end
+   if is_wide(t.opcode) then
+      local hi, lo = assert(t.hi), assert(t.lo)
+      local instr1 = new_instr(t)
+      instr1.imm = hi
+      local instr2 = new_instr({})
+      instr2.imm = lo
+      return {instr1, instr2}, 2
+   else
+      return {new_instr(t)}, 1
+   end
+end
+
 local function test_asm ()
    local l = parse_line("mov64 r0, 0x1")
    assert(table_equals(l, {'mov64', 'r0', '0x1'}))
    local ir = emit_ir(l)
    assert(table_equals(ir, {opcode=0xb7, dst=0, imm=0x1}))
-   local instr = emit_instr(ir)
-   assert(hexdump(instr) == "b7000000 01000000")
+   local instr, n = emit_instr(ir)
+   assert(n == 1)
+   assert((hexdump(unpack(instr)) == "b7000000 01000000"))
 end
 
 local function test_parse_lines ()
@@ -428,42 +468,15 @@ local function test_parse_lines ()
    test_parse_line("exit",                        {'exit'})
 end
 
-local hilo = (function()
-   local t = ffi.new[[
-      union {
-         struct {
-            uint32_t hi;
-            uint32_t lo;
-         };
-         uint64_t val;
-      }
-   ]]
-   return function (val)
-      t.val = val
-      return t.hi, t.lo
-   end
-end)()
-
 local function compile_program (text)
    local ret = {}
    for l in text:gmatch("[^\n]+") do
       local t = assert(parse_line(l))
       if #t > 0 then
          local ir = assert(emit_ir(t))
-         -- Wide instruction.
-         if ir.opcode == 0x18 then
-            local hi, lo = hilo(ir.imm)
-
-            ir.imm = hi
-            local instr = assert(emit_instr(ir))
-            table.insert(ret, instr)
-
-            local ir = {opcode=0, imm=lo}
-            local instr = assert(emit_instr(ir))
-            table.insert(ret, instr)
-         else
-            local instr = assert(emit_instr(ir))
-            table.insert(ret, instr)
+         local instr, n = assert(emit_instr(ir))
+         for i=1,n do
+            table.insert(ret, instr[i])
          end
       end
    end
@@ -543,11 +556,15 @@ local function test_compile_program ()
    print(actual)
 end
 
-local function instr_to_hexdump (text)
+local function instr_to_hexdump (l)
    local t = parse_line(l)
    local ir = emit_ir(t)
-   local instr = emit_instr(ir)
-   print(hexdump(instr))
+   local instr, n = emit_instr(ir)
+   if n == 1 then
+      print(hexdump(unpack(instr)))
+   else
+      print(hexdump(instr))
+   end
 end
 
 function selftest ()
