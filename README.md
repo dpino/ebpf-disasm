@@ -63,7 +63,7 @@ exit
 ```
 ## Assembler
 
-Read an input eBPF source code program and transforms it to binary code. Example:
+Reads an input eBPF source code program and compiles it to binary code. Example:
 
 ```bash
 $ ebpf asm data/xdp_ipv6_filter.ebpf
