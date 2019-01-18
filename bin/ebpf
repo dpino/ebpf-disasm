@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+ACTION="$1"
+shift
+
+usage()
+{
+   local exit_code=$1
+   echo "Usage: ebpf <command>"
+   echo ""
+   echo "commands:"
+   echo -e "   disam\tDisassembles eBPF bytecode in hexadecimal format"
+   echo -e "   asm\t\tAssembles eBPF source code program to a binary file"
+   exit $exit_code
+}
+
+if [[ -z "$ACTION" ]]; then
+   usage 1
+fi
+
+if [[ "$ACTION" == "-h" || "$ACTION" == "--help" ]]; then
+   echo "hello"
+   usage 0
+fi
+
+CWD=`dirname "$0"`
+EBPF_ASM="$CWD/ebpf-asm"
+EBPF_DISASM="$CWD/ebpf-disasm"
+
+case "$ACTION" in
+   "asm")
+      "$EBPF_ASM" $@
+   ;;
+   "disasm")
+      "$EBPF_DISASM" $@
+   ;;
+esac
